@@ -16,31 +16,51 @@ jobs:
       - name: Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y git bc bison flex libssl-dev libelf-dev gcc-aarch64-linux-gnu make python2
+          sudo apt-get install -y git bc bison flex libssl-dev libelf-dev gcc-aarch64-linux-gnu make python2 wget xz-utils
           sudo ln -sf /usr/bin/python2 /usr/bin/python
+          sudo apt-get install -y linux-headers-$(uname -r) || echo "Headers package not found!"
+
+      - name: Download & Setup Kernel Headers
+        run: |
+          wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.10.tar.xz
+          tar -xf linux-5.10.tar.xz
+          sudo mkdir -p /usr/include/linux/
+          sudo cp -r linux-5.10/include/linux/* /usr/include/linux/
+        working-directory: ./msm-5.4
+
+      - name: Verify Required Files
+        run: |
+          ls -l /usr/include/linux/ || echo "Linux headers missing!"
+          ls -l scripts/kconfig/ || echo "scripts/kconfig directory not found!"
+        working-directory: ./msm-5.4
 
       - name: Fix videodev2.h Header
         run: |
-          if [ -f "include/uapi/linux/videodev2.h" ]; then
-            sed -i '1i #include <linux/time.h>' include/uapi/linux/videodev2.h
+          if [ ! -f "/usr/include/linux/videodev2.h" ]; then
+            echo '#include <linux/time.h>' | sudo tee /usr/include/linux/videodev2.h
           fi
         working-directory: ./msm-5.4
 
       - name: Fix psi.h Format Warning
         run: |
-          grep -n "%#u" include/trace/events/psi.h || echo "No format issue found"
           sed -i 's/%#u/%u/g' include/trace/events/psi.h
         working-directory: ./msm-5.4
 
       - name: Configure Kernel
         run: |
-          if [ -f "arch/arm64/configs/vendor/lahaina-gki_defconfig" ]; then
+          if [ -f arch/arm64/configs/vendor/lahaina-gki_defconfig ]; then
             make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- vendor/lahaina-gki_defconfig
           else
             make ARCH=arm64 defconfig
           fi
-          ./scripts/kconfig/merge_config.sh .config arch/arm64/configs/vendor/lahaina-NX669J_diff || true
-          ls -l .config || echo ".config not found!"
+
+          if [ -f scripts/kconfig/merge_config.sh ]; then
+            ./scripts/kconfig/merge_config.sh .config arch/arm64/configs/vendor/lahaina-NX669J_diff
+          else
+            echo "merge_config.sh not found!"
+          fi
+
+          ls -l .config || echo ".config file not found!"
         working-directory: ./msm-5.4
 
       - name: Build Kernel
@@ -54,7 +74,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: NX669J-Kernel-Image
-          path: msm-5.4/arch/arm64/boot/
+          path: msm-5.4/arch/arm64/boot/Image*
 
       - name: Create Release
         if: success()
