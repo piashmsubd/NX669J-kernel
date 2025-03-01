@@ -12,7 +12,7 @@ jobs:
     steps:
       # ১. রিপোজিটরি চেকআউট (v4)
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       # ২. বিল্ড পরিবেশ সেটআপ
       - name: Setup Build Environment
@@ -41,7 +41,7 @@ jobs:
 
       # ৬. বিল্ড আউটপুট আপলোড
       - name: Upload Kernel Image
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: NX669J-Kernel-Image
           path: msm-5.4/arch/arm64/boot/Image
