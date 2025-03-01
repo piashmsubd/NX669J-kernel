@@ -1,0 +1,51 @@
+name: Build NX669J Kernel
+
+# কখন workflow রান করবে
+on:
+  push:
+    branches: [ main ]  # 'main' ব্রাঞ্চে পুশ হলে রান করবে
+  workflow_dispatch:    # ম্যানুয়ালি রান করার অপশন
+
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-latest  # Ubuntu 22.04 বা সর্বশেষ ভার্সন ব্যবহার করবে
+
+    steps:
+      # ১. রিপোজিটরি চেকআউট করা
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v3
+
+      # ২. প্রয়োজনীয় টুলস ইনস্টল করা
+      - name: Setup Build Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git bc bison flex libssl-dev libelf-dev gcc-aarch64-linux-gnu make
+
+      # ৩. কনফিগ তৈরি করা
+      - name: Configure Kernel
+        run: |
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- vendor/lahaina-NX669J_diff
+        working-directory: ./msm-5.4
+
+      # ৪. কার্নেল বিল্ড করা
+      - name: Build Kernel
+        run: |
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc)
+        working-directory: ./msm-5.4
+
+      # ৫. বিল্ড আউটপুট সংরক্ষণ করা
+      - name: Upload Kernel Image
+        uses: actions/upload-artifact@v3
+        with:
+          name: kernel-image
+          path: msm-5.4/arch/arm64/boot/Image
+
+      # ৬. রিলিজ তৈরি করা (ঐচ্ছিক)
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "msm-5.4/arch/arm64/boot/Image"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: "kernel-${{ github.run_number }}"
+          name: "NX669J Kernel Build #${{ github.run_number }}"
