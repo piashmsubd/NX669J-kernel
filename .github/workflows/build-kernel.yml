@@ -1,4 +1,4 @@
-name: Build NX669J Kernel with Copilot AI
+name: Build NX669J Kernel
 
 on:
   push:
@@ -10,44 +10,70 @@ jobs:
     runs-on: ubuntu-20.04
 
     steps:
+      # 1. রিপোজিটরি চেকআউট
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      # 2. বিল্ড পরিবেশ সেটআপ
       - name: Setup Build Environment
         run: |
           sudo apt-get update
           sudo apt-get install -y git bc bison flex libssl-dev libelf-dev gcc-aarch64-linux-gnu make python2 wget xz-utils nodejs npm
           sudo ln -sf /usr/bin/python2 /usr/bin/python
           sudo apt-get install -y linux-headers-$(uname -r) || echo "Headers package not found!"
-          
-      - name: Install GitHub Copilot CLI
-        run: |
-          npm install -g @githubnext/github-copilot-cli
-          copilot auth
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # 3. Kernel Header Fix
+      - name: Fix Missing Kernel Headers
+        run: |
+          wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.10.tar.xz
+          tar -xf linux-5.10.tar.xz
+          sudo cp -r linux-5.10/include/linux /usr/include/
+        working-directory: ./
+
+      # 4. Fix Specific Header Issues
+      - name: Fix videodev2.h Header
+        run: |
+          if grep -q '#include <linux/time.h>' msm-5.4/usr/include/linux/videodev2.h; then
+            echo "Header already fixed"
+          else
+            sed -i '1i #include <linux/time.h>' msm-5.4/usr/include/linux/videodev2.h
+          fi
+        working-directory: ./
+
+      - name: Fix psi.h Format Warning
+        run: |
+          sed -i 's/%#u/%u/g' msm-5.4/include/trace/events/psi.h
+        working-directory: ./
+
+      # 5. কার্নেল কনফিগারেশন
       - name: Configure Kernel
         run: |
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_defconfig
-          sed -i 's/WERROR := 1/WERROR := 0/' Makefile || true
-        working-directory: ./msm-5.4
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- vendor/lahaina-gki_defconfig
+          ./scripts/kconfig/merge_config.sh .config arch/arm64/configs/vendor/lahaina-NX669J_diff
+          ls -l .config || echo ".config not found!"
+        working-directory: msm-5.4
 
+      # 6. কার্নেল বিল্ড
       - name: Build Kernel
         run: |
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) CFLAGS_KERNEL="-w" WERROR=0 || echo "BUILD_FAILED=true" >> $GITHUB_ENV
-        working-directory: ./msm-5.4
+          sed -i 's/WERROR := 1/WERROR := 0/' Makefile || true
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) CFLAGS_KERNEL="-w" WERROR=0
+          ls -l arch/arm64/boot/Image || echo "Image not found!"
+        working-directory: msm-5.4
 
-      - name: Debug Kernel Build Issues with Copilot AI
-        if: env.BUILD_FAILED == 'true'
-        run: |
-          echo "Kernel Build Failed. Sending logs to Copilot AI for Debugging..."
-          LOGS=$(tail -n 50 msm-5.4/0_build.txt | sed ':a;N;$!ba;s/\n/ /g')
-          copilot suggest "Fix errors in kernel build: $LOGS"
-        working-directory: ./msm-5.4
-
+      # 7. বিল্ড আউটপুট আপলোড
       - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
         with:
           name: NX669J-Kernel-Image
-          path: msm-5.4/arch/arm64/boot/Image*
+          path: msm-5.4/arch/arm64/boot/Image
+
+      # 8. রিলিজ তৈরি (ঐচ্ছিক)
+      - name: Create Release
+        if: success()
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "msm-5.4/arch/arm64/boot/Image"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: "kernel-v${{ github.run_number }}"
+          name: "NX669J Kernel Build #${{ github.run_number }}"
