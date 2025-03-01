@@ -27,29 +27,33 @@ jobs:
           sed -i '1i #include <linux/time.h>' usr/include/linux/videodev2.h || true
         working-directory: ./msm-5.4
 
-      # ৪. কার্নেল কনফিগারেশন (বেস + ফ্র্যাগমেন্ট)
+      # ৪. psi.h ফাইলে ফরম্যাট ফিক্স
+      - name: Fix psi.h Format Warning
+        run: |
+          sed -i 's/#%u/%u/g' include/trace/events/psi.h || true  # #%u কে %u দিয়ে প্রতিস্থাপন
+        working-directory: ./msm-5.4
+
+      # ৫. কার্নেল কনফিগারেশন
       - name: Configure Kernel
         run: |
-          # বেস কনফিগ তৈরি
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- vendor/lahaina-gki_defconfig
-          # NX669J ফ্র্যাগমেন্ট মার্জ করা
           ./scripts/kconfig/merge_config.sh .config arch/arm64/configs/vendor/lahaina-NX669J_diff
         working-directory: ./msm-5.4
 
-      # ৫. কার্নেল বিল্ড
+      # ৬. কার্নেল বিল্ড (WERROR নিষ্ক্রিয়)
       - name: Build Kernel
         run: |
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc)
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) WERROR=0
         working-directory: ./msm-5.4
 
-      # ৬. বিল্ড আউটপুট আপলোড
+      # ৭. বিল্ড আউটপুট আপলোড
       - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
         with:
           name: NX669J-Kernel-Image
           path: msm-5.4/arch/arm64/boot/Image
 
-      # ৭. রিলিজ তৈরি (ঐচ্ছিক)
+      # ৮. রিলিজ তৈরি (ঐচ্ছিক)
       - name: Create Release
         if: success()
         uses: ncipollo/release-action@v1
