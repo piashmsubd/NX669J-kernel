@@ -10,57 +10,60 @@ jobs:
     runs-on: ubuntu-20.04
 
     steps:
-      # ১. রিপোজিটরি চেকআউট
+      # 1. Checkout the repository
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # ২. বিল্ড পরিবেশ সেটআপ
+      # 2. Set up the build environment
       - name: Setup Build Environment
         run: |
           sudo apt-get update
           sudo apt-get install -y git bc bison flex libssl-dev libelf-dev gcc-aarch64-linux-gnu make python2
           sudo ln -sf /usr/bin/python2 /usr/bin/python
 
-      # ৩. videodev2.h ফাইলে time.h ইনক্লুড করা
+      # 3. Fix videodev2.h header (existing step)
       - name: Fix videodev2.h Header
         run: |
           sed -i '1i #include <linux/time.h>' usr/include/linux/videodev2.h || true
         working-directory: ./msm-5.4
 
-      # ৪. psi.h ফাইলে ফরম্যাট ফিক্স (নিশ্চিত করা)
+      # 4. Fix psi.h format warning
       - name: Fix psi.h Format Warning
         run: |
-          # ফাইলের আগের অবস্থা দেখা
-          echo "Before fix:"
-          grep "trace_raw_output_psi_event" include/trace/events/psi.h || true
-          # #%u কে %u দিয়ে প্রতিস্থাপন
-          sed -i 's/#%u/%u/g' include/trace/events/psi.h
-          # ফিক্সের পর অবস্থা দেখা
+          # Check for format strings with #
+          echo "Checking for format strings with #:"
+          grep -n "%#u" include/trace/events/psi.h || echo "No %#u found"
+          # Replace %#u with %u
+          sed -i 's/%#u/%u/g' include/trace/events/psi.h
+          # Verify the fix
           echo "After fix:"
-          grep "trace_raw_output_psi_event" include/trace/events/psi.h || true
+          grep -n "%u" include/trace/events/psi.h || echo "No %u found"
         working-directory: ./msm-5.4
 
-      # ৫. কার্নেল কনফিগারেশন
+      # 5. Configure the kernel
       - name: Configure Kernel
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- vendor/lahaina-gki_defconfig
           ./scripts/kconfig/merge_config.sh .config arch/arm64/configs/vendor/lahaina-NX669J_diff
         working-directory: ./msm-5.4
 
-      # ৬. কার্নেল বিল্ড (Warning বন্ধ করা)
+      # 6. Build the kernel with warnings disabled
       - name: Build Kernel
         run: |
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) CFLAGS_KERNEL="-w" WERROR=0
+          # Append WERROR=0 to Makefile to prevent warnings from becoming errors
+          echo "MAKEFLAGS += WERROR=0" >> Makefile
+          # Build with all warnings suppressed
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) CFLAGS_KERNEL="-w"
         working-directory: ./msm-5.4
 
-      # ৭. বিল্ড আউটপুট আপলোড
+      # 7. Upload the kernel image
       - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
         with:
           name: NX669J-Kernel-Image
           path: msm-5.4/arch/arm64/boot/Image
 
-      # ৮. রিলিজ তৈরি (ঐচ্ছিক)
+      # 8. Create a release (optional)
       - name: Create Release
         if: success()
         uses: ncipollo/release-action@v1
