@@ -7,10 +7,10 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04  # Ubuntu 20.04 ব্যবহার
+    runs-on: ubuntu-20.04
 
     steps:
-      # ১. রিপোজিটরি চেকআউট (v4)
+      # ১. রিপোজিটরি চেকআউট
       - name: Checkout Repository
         uses: actions/checkout@v3
 
@@ -19,18 +19,21 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y git bc bison flex libssl-dev libelf-dev gcc-aarch64-linux-gnu make python2
-          sudo ln -sf /usr/bin/python2 /usr/bin/python  # python2 এর জন্য symlink
-          
-      # ৩. videodev2.h ফাইলে time.h ইনক্লুড করা (আগের এরর ফিক্স)
+          sudo ln -sf /usr/bin/python2 /usr/bin/python
+
+      # ৩. videodev2.h ফাইলে time.h ইনক্লুড করা
       - name: Fix videodev2.h Header
         run: |
           sed -i '1i #include <linux/time.h>' usr/include/linux/videodev2.h || true
         working-directory: ./msm-5.4
 
-      # ৪. কার্নেল কনফিগারেশন
+      # ৪. কার্নেল কনফিগারেশন (বেস + ফ্র্যাগমেন্ট)
       - name: Configure Kernel
         run: |
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- vendor/lahaina-NX669J_diff
+          # বেস কনফিগ তৈরি
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- vendor/lahaina-gki_defconfig
+          # NX669J ফ্র্যাগমেন্ট মার্জ করা
+          ./scripts/kconfig/merge_config.sh .config arch/arm64/configs/vendor/lahaina-NX669J_diff
         working-directory: ./msm-5.4
 
       # ৫. কার্নেল বিল্ড
@@ -48,7 +51,7 @@ jobs:
 
       # ৭. রিলিজ তৈরি (ঐচ্ছিক)
       - name: Create Release
-        if: success()  # শুধুমাত্র সফল হলে রিলিজ করবে
+        if: success()
         uses: ncipollo/release-action@v1
         with:
           artifacts: "msm-5.4/arch/arm64/boot/Image"
