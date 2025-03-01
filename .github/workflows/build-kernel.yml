@@ -40,7 +40,7 @@ jobs:
 
       # ৬. বিল্ড আউটপুট আপলোড
       - name: Upload Kernel Image
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: NX669J-Kernel-Image
           path: msm-5.4/arch/arm64/boot/Image
