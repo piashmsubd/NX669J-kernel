@@ -1,0 +1,41 @@
+name: Build NX669J Kernel
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v3
+
+      - name: Setup Build Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git bc bison flex libssl-dev libelf-dev gcc-aarch64-linux-gnu make
+
+      # হেডার ফাইল ফিক্স করা
+      - name: Fix Header Files
+        run: |
+          echo '#include <linux/time.h>' | cat - usr/include/linux/videodev2.h > temp && mv temp usr/include/linux/videodev2.h || true
+        working-directory: ./msm-5.4
+
+      - name: Configure Kernel
+        run: |
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- vendor/lahaina-NX669J_diff
+        working-directory: ./msm-5.4
+
+      - name: Build Kernel
+        run: |
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc)
+        working-directory: ./msm-5.4
+
+      - name: Upload Kernel Image
+        uses: actions/upload-artifact@v3
+        with:
+          name: kernel-image
+          path: msm-5.4/arch/arm64/boot/Image
