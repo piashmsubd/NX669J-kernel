@@ -10,9 +10,11 @@ jobs:
     runs-on: ubuntu-20.04
 
     steps:
+      # ১. রিপোজিটরি চেকআউট
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      # ২. বিল্ড পরিবেশ সেটআপ
       - name: Setup Build Environment
         run: |
           sudo apt-get update
@@ -20,40 +22,55 @@ jobs:
           sudo ln -sf /usr/bin/python2 /usr/bin/python
           sudo apt-get install -y linux-headers-$(uname -r) || echo "Headers package not found!"
 
-      - name: Fix Missing Headers
+      # ৩. Linux Kernel Headers সেটআপ (header files মিসিং ফিক্স)
+      - name: Download and Setup Linux Headers
         run: |
           wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.10.tar.xz
           tar -xf linux-5.10.tar.xz
           sudo mkdir -p /usr/include/uapi/linux/
           sudo cp -r linux-5.10/include/uapi/linux/* /usr/include/uapi/linux/
+
+      # ৪. Fix videodev2.h Header
+      - name: Fix videodev2.h Header
+        run: |
+          sed -i '1i #include <linux/time.h>' usr/include/linux/videodev2.h || true
         working-directory: ./msm-5.4
 
+      # ৫. Fix psi.h Format Warning
+      - name: Fix psi.h Format Warning
+        run: |
+          sed -i 's/%#u/%u/g' include/trace/events/psi.h
+        working-directory: ./msm-5.4
+
+      # ৬. Configure Kernel
       - name: Configure Kernel
         run: |
-          if [ -f arch/arm64/configs/vendor/lahaina-gki_defconfig ]; then
-            make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- vendor/lahaina-gki_defconfig
-          else
-            make ARCH=arm64 defconfig
-          fi
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- vendor/lahaina-gki_defconfig
+          ./scripts/kconfig/merge_config.sh .config arch/arm64/configs/vendor/lahaina-NX669J_diff
+          ls -l .config || echo ".config not found!"
         working-directory: ./msm-5.4
 
+      # ৭. Build Kernel
       - name: Build Kernel
         run: |
           sed -i 's/WERROR := 1/WERROR := 0/' Makefile || true
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) CFLAGS_KERNEL="-w" WERROR=0
+          ls -l arch/arm64/boot/Image || echo "Image not found!"
         working-directory: ./msm-5.4
 
+      # ৮. Upload Kernel Image
       - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
         with:
           name: NX669J-Kernel-Image
-          path: msm-5.4/arch/arm64/boot/Image*
+          path: msm-5.4/arch/arm64/boot/Image
 
+      # ৯. Create Release (Optional)
       - name: Create Release
         if: success()
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "msm-5.4/arch/arm64/boot/Image*"
+          artifacts: "msm-5.4/arch/arm64/boot/Image"
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: "kernel-v${{ github.run_number }}"
           name: "NX669J Kernel Build #${{ github.run_number }}"
