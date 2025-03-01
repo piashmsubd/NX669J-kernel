@@ -27,10 +27,17 @@ jobs:
           sed -i '1i #include <linux/time.h>' usr/include/linux/videodev2.h || true
         working-directory: ./msm-5.4
 
-      # ৪. psi.h ফাইলে ফরম্যাট ফিক্স
+      # ৪. psi.h ফাইলে ফরম্যাট ফিক্স (নিশ্চিত করা)
       - name: Fix psi.h Format Warning
         run: |
-          sed -i 's/#%u/%u/g' include/trace/events/psi.h || true  # #%u কে %u দিয়ে প্রতিস্থাপন
+          # ফাইলের আগের অবস্থা দেখা
+          echo "Before fix:"
+          grep "trace_raw_output_psi_event" include/trace/events/psi.h || true
+          # #%u কে %u দিয়ে প্রতিস্থাপন
+          sed -i 's/#%u/%u/g' include/trace/events/psi.h
+          # ফিক্সের পর অবস্থা দেখা
+          echo "After fix:"
+          grep "trace_raw_output_psi_event" include/trace/events/psi.h || true
         working-directory: ./msm-5.4
 
       # ৫. কার্নেল কনফিগারেশন
@@ -40,10 +47,10 @@ jobs:
           ./scripts/kconfig/merge_config.sh .config arch/arm64/configs/vendor/lahaina-NX669J_diff
         working-directory: ./msm-5.4
 
-      # ৬. কার্নেল বিল্ড (WERROR নিষ্ক্রিয়)
+      # ৬. কার্নেল বিল্ড (Warning বন্ধ করা)
       - name: Build Kernel
         run: |
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) WERROR=0
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) CFLAGS_KERNEL="-w" WERROR=0
         working-directory: ./msm-5.4
 
       # ৭. বিল্ড আউটপুট আপলোড
