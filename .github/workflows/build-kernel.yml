@@ -16,9 +16,15 @@ jobs:
       - name: Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y git bc bison flex libssl-dev libelf-dev gcc-aarch64-linux-gnu make python2 wget xz-utils
+          sudo apt-get install -y git bc bison flex libssl-dev libelf-dev gcc-aarch64-linux-gnu make python2 wget xz-utils clang llvm lld
           sudo ln -sf /usr/bin/python2 /usr/bin/python
           sudo apt-get install -y linux-headers-$(uname -r) || echo "Headers package not found!"
+
+      - name: Install Copilot CLI for AI Debugging
+        run: |
+          sudo apt install -y nodejs npm
+          npm install -g @githubnext/github-copilot-cli
+          echo "Copilot CLI installed successfully!"
 
       - name: Fix Missing Headers
         run: |
@@ -41,6 +47,12 @@ jobs:
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_defconfig
           sed -i 's/WERROR := 1/WERROR := 0/' Makefile || true
+        working-directory: ./msm-5.4
+
+      - name: Debug Kernel Config with Copilot AI
+        run: |
+          copilot suggest "Fix errors in kernel build and provide the correct make commands"
+          copilot explain "Why is the kernel build failing?"
         working-directory: ./msm-5.4
 
       - name: Build Kernel
