@@ -7,20 +7,21 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04  # Ubuntu 20.04 ব্যবহার
 
     steps:
-      # ১. রিপোজিটরি চেকআউট
+      # ১. রিপোজিটরি চেকআউট (v4)
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # ২. বিল্ড পরিবেশ সেটআপ
       - name: Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y git bc bison flex libssl-dev libelf-dev gcc-aarch64-linux-gnu make
-
-      # ৩. videodev2.h ফাইলে time.h ইনক্লুড করা (এরর ফিক্স)
+          sudo apt-get install -y git bc bison flex libssl-dev libelf-dev gcc-aarch64-linux-gnu make python2
+          sudo ln -sf /usr/bin/python2 /usr/bin/python  # python2 এর জন্য symlink
+          
+      # ৩. videodev2.h ফাইলে time.h ইনক্লুড করা (আগের এরর ফিক্স)
       - name: Fix videodev2.h Header
         run: |
           sed -i '1i #include <linux/time.h>' usr/include/linux/videodev2.h || true
@@ -40,13 +41,14 @@ jobs:
 
       # ৬. বিল্ড আউটপুট আপলোড
       - name: Upload Kernel Image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: NX669J-Kernel-Image
           path: msm-5.4/arch/arm64/boot/Image
 
       # ৭. রিলিজ তৈরি (ঐচ্ছিক)
       - name: Create Release
+        if: success()  # শুধুমাত্র সফল হলে রিলিজ করবে
         uses: ncipollo/release-action@v1
         with:
           artifacts: "msm-5.4/arch/arm64/boot/Image"
