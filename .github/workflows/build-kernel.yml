@@ -4,6 +4,14 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      deepseek_api_key:
+        description: "Enter your DeepSeek API Key"
+        required: true
+        default: "your_api_key_here"
+
+env:
+  DEEPSEEK_API_KEY: ${{ github.event.inputs.deepseek_api_key }}
 
 jobs:
   build:
@@ -16,8 +24,8 @@ jobs:
       - name: Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y git bc bison flex libssl-dev libelf-dev gcc-aarch64-linux-gnu make python2
-          sudo ln -sf /usr/bin/python2 /usr/bin/python
+          sudo apt-get install -y git bc bison flex libssl-dev libelf-dev gcc-aarch64-linux-gnu make python3
+          sudo ln -sf /usr/bin/python3 /usr/bin/python
 
       - name: Generate Kernel Configuration
         run: |
@@ -38,11 +46,33 @@ jobs:
         working-directory: msm-5.4
 
       - name: Build Kernel
+        id: build_kernel
         run: |
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) CFLAGS_KERNEL="-w" WERROR=0
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) CFLAGS_KERNEL="-w" WERROR=0 || echo "BUILD_FAILED" > build_error.log
+        working-directory: msm-5.4
+
+      - name: Analyze Build Errors with DeepSeek AI
+        if: failure()
+        run: |
+          if [[ -f "msm-5.4/build_error.log" ]]; then
+            ERROR_LOG=$(cat msm-5.4/build_error.log)
+            echo "🔍 DeepSeek AI Analyzing Build Error..."
+            RESPONSE=$(curl -s -X POST "https://api.deepseek.com/v1/chat/completions" \
+              -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "model": "deepseek-coder",
+                "messages": [{"role": "user", "content": "Fix this kernel build error:\n'"$ERROR_LOG"'"}],
+                "max_tokens": 1000,
+                "temperature": 0.7
+              }')
+            echo "💡 DeepSeek AI Suggestion:"
+            echo "$RESPONSE"
+          fi
         working-directory: msm-5.4
 
       - name: Upload Kernel Image
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: NX669J-Kernel-Image
