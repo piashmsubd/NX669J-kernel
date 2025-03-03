@@ -1,109 +1,49 @@
-name: Build NX669J Kernel with DeepSeek (User Input)
+name: Build NX669J Kernel with DeepSeek AI
 
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
-    inputs:
-      deepseek_api_key:
-        description: 'Enter your DeepSeek API Key'
-        required: true
-        type: string
-      branch:
-        description: 'Select Branch for Build'
-        required: true
-        default: 'main'
-        type: choice
-        options:
-          - main
-          - development
-          - testing
-      custom_repo:
-        description: 'Enter Custom GitHub Repo (Optional)'
-        required: false
-        type: string
 
 jobs:
   build:
     runs-on: ubuntu-20.04
 
     steps:
-      # 1️⃣ **রিপোজিটরি চেকআউট (User Input Branch)**
       - name: Checkout Repository
         uses: actions/checkout@v3
-        with:
-          ref: ${{ inputs.branch }}
 
-      # 2️⃣ **API Key & Configurations সেট করা**
-      - name: Set API Key & Configuration Files
-        run: |
-          echo "✅ Using DeepSeek API Key: ${{ inputs.deepseek_api_key }}"
-          echo "✅ Using Branch: ${{ inputs.branch }}"
-          if [[ ! -z "${{ inputs.custom_repo }}" ]]; then
-            echo "✅ Cloning Custom Repo: ${{ inputs.custom_repo }}"
-            git clone ${{ inputs.custom_repo }} msm-5.4
-          fi
-          sleep 5  # বিল্ড শুরুর আগে ৫ সেকেন্ড বিরতি
-
-      # 3️⃣ **Build Environment Setup**
       - name: Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y git bc bison flex libssl-dev libelf-dev gcc-aarch64-linux-gnu make python2 wget xz-utils nodejs npm
+          sudo apt-get install -y git bc bison flex libssl-dev libelf-dev gcc-aarch64-linux-gnu make python2
           sudo ln -sf /usr/bin/python2 /usr/bin/python
 
-      # 4️⃣ **Kernel Headers Fix**
-      - name: Fix Missing Kernel Headers
+      - name: Generate Kernel Configuration
         run: |
-          wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.10.tar.xz
-          tar -xf linux-5.10.tar.xz
-          sudo cp -r linux-5.10/include/linux /usr/include/
-        working-directory: ./
-
-      # 5️⃣ **Kernel Configuration**
-      - name: Configure Kernel
-        run: |
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- vendor/lahaina-NX669J-GKI_diff
-          ./scripts/kconfig/merge_config.sh .config arch/configs/vendor/lahaina-NX669J_diff
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- vendor/lahaina-gki_defconfig
+          ls -l .config || echo "❌ .config file not found!"
         working-directory: msm-5.4
 
-      # 6️⃣ **Kernel Build**
+      - name: Merge Custom Kernel Config
+        run: |
+          ./scripts/kconfig/merge_config.sh -m .config arch/arm64/configs/vendor/lahaina-NX669J-GKI_diff
+          ls -l .config || echo "❌ Config merge failed!"
+        working-directory: msm-5.4
+
+      - name: Fix Missing Config
+        if: "! test -f msm-5.4/.config"
+        run: |
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
+        working-directory: msm-5.4
+
       - name: Build Kernel
         run: |
-          sed -i 's/WERROR := 1/WERROR := 0/' Makefile || true
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) CFLAGS_KERNEL="-w" WERROR=0 || echo "BUILD_FAILED=true" >> $GITHUB_ENV
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) CFLAGS_KERNEL="-w" WERROR=0
         working-directory: msm-5.4
 
-      # 7️⃣ **DeepSeek AI Debugging**
-      - name: Debug Kernel Build Issues with DeepSeek AI
-        if: env.BUILD_FAILED == 'true'
-        run: |
-          echo "⚠️ Kernel Build Failed. Sending logs to DeepSeek AI for Debugging..."
-          LOGS=$(tail -n 50 msm-5.4/0_build.txt | sed ':a;N;$!ba;s/\n/ /g')
-          RESPONSE=$(curl -s -X POST "https://api.deepseek.com/v1/chat/completions" \
-            -H "Authorization: Bearer ${{ inputs.deepseek_api_key }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "model": "deepseek-coder",
-              "messages": [{"role": "user", "content": "Fix errors in kernel build: '"$LOGS"'"}],
-              "max_tokens": 1000,
-              "temperature": 0.7
-            }')
-          echo "🔍 DeepSeek AI Suggestion:"
-          echo "$RESPONSE" | jq -r '.choices[0].message.content'
-        working-directory: msm-5.4
-
-      # 8️⃣ **Build Output Upload**
       - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
         with:
           name: NX669J-Kernel-Image
-          path: msm-5.4/arch/arm64/boot/Image*
-
-      # 9️⃣ **GitHub Release (ঐচ্ছিক)**
-      - name: Create Release
-        if: success()
-        uses: ncipollo/release-action@v1
-        with:
-          artifacts: "msm-5.4/arch/arm64/boot/Image"
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: "kernel-v${{ github.run_number }}"
-          name: "NX669J Kernel Build #${{ github.run_number }}"
+          path: msm-5.4/arch/arm64/boot/Image
