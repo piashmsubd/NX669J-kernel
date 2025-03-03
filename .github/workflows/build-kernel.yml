@@ -57,6 +57,7 @@ jobs:
       - name: Configure Kernel
         run: |
           cd msm-5.4
+          make oldconfig
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- vendor/lahaina-gki_defconfig
           ./scripts/kconfig/merge_config.sh .config arch/arm64/configs/vendor/lahaina-NX669J_diff
 
